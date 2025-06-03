@@ -1,5 +1,5 @@
 // ============================================================================
-// 4. BotController.cs - AI 봇 컨트롤러
+// BotController.cs - 미래 예측 사격 기능 추가
 // ============================================================================
 using UnityEngine;
 
@@ -11,8 +11,14 @@ public class BotController : BaseCharacter
     public float attackRange = 6f;
     public Color botColor = Color.red;
 
+    [Header("Prediction Settings")]
+    public bool usePredictiveAiming = true;
+    public float predictionAccuracy = 0.8f; // 0~1, 1이 완벽한 예측
+
     private Transform target;
     private Vector2 wanderTarget;
+    private Vector2 lastTargetPosition;
+    private Vector2 targetVelocity;
     private float lastTargetSearch;
     private float stateTimer;
     private BotState currentState = BotState.Wander;
@@ -35,18 +41,24 @@ public class BotController : BaseCharacter
                 moveSpeed *= 1.2f;
                 fireRate *= 0.7f;
                 detectionRange *= 1.3f;
+                bulletSpeed *= 1.1f;
+                predictionAccuracy = 0.9f;
                 botColor = Color.red;
                 break;
             case BotType.Sniper:
                 attackRange *= 1.5f;
                 fireRate *= 1.5f;
                 moveSpeed *= 0.8f;
+                bulletSpeed *= 1.3f;
+                predictionAccuracy = 0.95f; // 스나이퍼는 예측이 정확
                 botColor = Color.green;
                 break;
             case BotType.Rusher:
                 moveSpeed *= 1.5f;
                 dashCooldown *= 0.5f;
                 maxHealth *= 0.8f;
+                bulletSpeed *= 0.9f;
+                predictionAccuracy = 0.6f; // 러셔는 부정확
                 botColor = Color.blue;
                 break;
         }
@@ -77,10 +89,52 @@ public class BotController : BaseCharacter
     {
         if (target && currentState == BotState.Attack)
         {
-            var direction = (target.position - transform.position).normalized;
-            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
+            Vector2 aimDirection = GetAimDirection();
+            float angle = Mathf.Atan2(aimDirection.y, aimDirection.x) * Mathf.Rad2Deg - 90f;
             transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
+    }
+
+    Vector2 GetAimDirection()
+    {
+        if (!target) return Vector2.zero;
+
+        Vector2 targetPos = target.position;
+
+        if (usePredictiveAiming && botType != BotType.Basic)
+        {
+            // 타겟의 속도 계산
+            UpdateTargetVelocity();
+
+            // 예측 사격 계산
+            Vector2 predictedPos = CalculatePredictedPosition(targetPos, targetVelocity);
+
+            // 정확도에 따라 오차 추가
+            Vector2 aimOffset = Random.insideUnitCircle * (1f - predictionAccuracy) * 2f;
+            targetPos = predictedPos + aimOffset;
+        }
+
+        return (targetPos - (Vector2)transform.position).normalized;
+    }
+
+    void UpdateTargetVelocity()
+    {
+        if (target)
+        {
+            Vector2 currentPos = target.position;
+            targetVelocity = (currentPos - lastTargetPosition) / Time.deltaTime;
+            lastTargetPosition = currentPos;
+        }
+    }
+
+    Vector2 CalculatePredictedPosition(Vector2 currentPos, Vector2 velocity)
+    {
+        // 총알이 타겟에 도달하는 시간 계산
+        float distanceToTarget = Vector2.Distance(transform.position, currentPos);
+        float timeToHit = distanceToTarget / bulletSpeed;
+
+        // 예측 위치 = 현재 위치 + (속도 * 시간)
+        return currentPos + velocity * timeToHit;
     }
 
     protected override void HandleActions()
@@ -89,7 +143,7 @@ public class BotController : BaseCharacter
 
         if (currentState == BotState.Attack && target)
         {
-            Fire((target.position - transform.position).normalized);
+            Fire(GetAimDirection());
 
             if (botType == BotType.Rusher && Vector2.Distance(transform.position, target.position) < 4f)
             {
@@ -100,7 +154,7 @@ public class BotController : BaseCharacter
 
     void UpdateAI()
     {
-        if (Time.time - lastTargetSearch > 0.5f) // 0.5초마다 타겟 검색
+        if (Time.time - lastTargetSearch > 0.5f)
         {
             FindTarget();
             lastTargetSearch = Time.time;
@@ -127,7 +181,7 @@ public class BotController : BaseCharacter
             case BotState.Attack:
                 if (!target || distanceToTarget > attackRange * 1.2f)
                     ChangeState(BotState.Chase);
-                else if (currentHealth < maxHealth * 0.3f) // 체력 30% 이하시 도망
+                else if (currentHealth < maxHealth * 0.3f)
                     ChangeState(BotState.Flee);
                 break;
 
@@ -157,6 +211,10 @@ public class BotController : BaseCharacter
         }
 
         target = closestTarget?.transform;
+        if (target)
+        {
+            lastTargetPosition = target.position;
+        }
     }
 
     void ChangeState(BotState newState)

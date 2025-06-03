@@ -1,7 +1,8 @@
 // ============================================================================
-// 3. PlayerController.cs - 플레이어 전용 컨트롤러
+// 3. PlayerController.cs - 플레이어 전용 컨트롤러 (Unity 6 Input System)
 // ============================================================================
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class PlayerController : BaseCharacter
 {
@@ -25,12 +26,17 @@ public class PlayerController : BaseCharacter
 
     protected override void HandleMovement()
     {
-        var input = new Vector2(
-            Input.GetAxisRaw("Horizontal"),
-            Input.GetAxisRaw("Vertical")
-        ).normalized;
+        var keyboard = Keyboard.current;
+        if (keyboard == null) return;
 
-        Move(input);
+        var input = Vector2.zero;
+
+        if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) input.y += 1f;
+        if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) input.y -= 1f;
+        if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) input.x -= 1f;
+        if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) input.x += 1f;
+
+        Move(input.normalized);
     }
 
     protected override void HandleAiming()
@@ -45,12 +51,19 @@ public class PlayerController : BaseCharacter
 
     protected override void HandleActions()
     {
-        if (Input.GetMouseButton(0)) // 좌클릭으로 발사
+        var mouse = Mouse.current;
+        var keyboard = Keyboard.current;
+
+        if (mouse == null || keyboard == null) return;
+
+        // 좌클릭으로 발사
+        if (mouse.leftButton.isPressed)
         {
             Fire(GetAimDirection());
         }
 
-        if (Input.GetKeyDown(KeyCode.Space)) // 스페이스로 대시
+        // 스페이스로 대시
+        if (keyboard.spaceKey.wasPressedThisFrame)
         {
             Dash(GetAimDirection());
         }
@@ -74,5 +87,15 @@ public class PlayerController : BaseCharacter
         {
             crosshair.transform.position = GetMouseWorldPosition();
         }
+    }
+
+    // 새 Input System용 마우스 월드 좌표 계산
+    protected override Vector2 GetMouseWorldPosition()
+    {
+        var mouse = Mouse.current;
+        if (mouse == null) return Vector2.zero;
+
+        var mousePos = mouse.position.ReadValue();
+        return playerCamera.ScreenToWorldPoint(mousePos);
     }
 }
