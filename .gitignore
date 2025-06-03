@@ -1,0 +1,12 @@
+/Packages/
+/Assets/TextMesh Pro/
+/Assets/Settings/
+/Assets/Scenes/
+/Library/
+/Logs/
+/ProjectSettings/
+/Temp/
+/UserSettings/
+*.meta
+*.asset
+*.inputactions
