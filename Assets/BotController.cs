@@ -1,5 +1,5 @@
 // ============================================================================
-// BotController.cs - 미래 예측 사격 기능 추가
+// BotController.cs - 전지적 추적 & 잠복 시스템
 // ============================================================================
 using UnityEngine;
 
@@ -11,26 +11,193 @@ public class BotController : BaseCharacter
     public float attackRange = 6f;
     public Color botColor = Color.red;
 
-    [Header("Prediction Settings")]
-    public bool usePredictiveAiming = true;
-    public float predictionAccuracy = 0.8f; // 0~1, 1이 완벽한 예측
+    [Header("Hunting Settings")]
+    public bool omniscientTracking = true; // 전지적 추적
+    public float ambushDistance = 12f; // 잠복 거리
+    public float ambushDuration = 3f; // 잠복 시간
 
-    private Transform target;
+    private Transform player;
+    private Vector2 ambushPosition;
     private Vector2 wanderTarget;
-    private Vector2 lastTargetPosition;
-    private Vector2 targetVelocity;
-    private float lastTargetSearch;
     private float stateTimer;
-    private BotState currentState = BotState.Wander;
+    private BotState currentState = BotState.Hunt;
 
-    enum BotState { Wander, Chase, Attack, Flee }
+    enum BotState { Hunt, Ambush, Attack, Flee }
 
     protected override void Awake()
     {
         base.Awake();
+
+        // 랜덤 봇 타입 설정
+        botType = (BotType)Random.Range(0, System.Enum.GetValues(typeof(BotType)).Length);
+
         SetBotStats();
         GetComponent<SpriteRenderer>().color = botColor;
-        SetRandomWanderTarget();
+        FindPlayer();
+    }
+
+    void FindPlayer()
+    {
+        var playerController = FindAnyObjectByType<PlayerController>();
+        if (playerController) player = playerController.transform;
+    }
+
+    protected override void HandleMovement()
+    {
+        if (!player) return;
+
+        switch (currentState)
+        {
+            case BotState.Hunt:
+                // 직접 추적하거나 잠복 위치로 이동
+                if (ShouldAmbush())
+                {
+                    MoveTowards(ambushPosition);
+                    if (Vector2.Distance(transform.position, ambushPosition) < 1f)
+                        ChangeState(BotState.Ambush);
+                }
+                else
+                {
+                    MoveTowards(player.position);
+                }
+                break;
+
+            case BotState.Ambush:
+                // 잠복 중엔 미동하지 않음
+                break;
+
+            case BotState.Attack:
+                // 공격하면서 근접
+                MoveTowards(player.position);
+                break;
+
+            case BotState.Flee:
+                MoveAwayFrom(player.position);
+                break;
+        }
+    }
+
+    bool ShouldAmbush()
+    {
+        if (botType == BotType.Sniper || botType == BotType.Aggressive)
+        {
+            float distToPlayer = Vector2.Distance(transform.position, player.position);
+            if (distToPlayer > ambushDistance)
+            {
+                // 플레이어 이동 방향 예측해서 매복
+                Rigidbody2D playerRb = player.GetComponent<Rigidbody2D>();
+                Vector2 playerVel = playerRb ? playerRb.linearVelocity : Vector2.zero;
+                ambushPosition = (Vector2)player.position + playerVel.normalized * 5f;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected override void HandleAiming()
+    {
+        if (player && (currentState == BotState.Attack || currentState == BotState.Ambush))
+        {
+            Vector2 aimDirection = GetPredictiveAimDirection();
+            float angle = Mathf.Atan2(aimDirection.y, aimDirection.x) * Mathf.Rad2Deg - 90f;
+            transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
+        }
+    }
+
+    Vector2 GetPredictiveAimDirection()
+    {
+        Vector2 targetPos = player.position;
+
+        // 고급 봇은 예측 사격
+        if (botType != BotType.Basic)
+        {
+            Rigidbody2D playerRb = player.GetComponent<Rigidbody2D>();
+            if (playerRb)
+            {
+                Vector2 playerVel = playerRb.linearVelocity;
+                float timeToHit = Vector2.Distance(transform.position, targetPos) / bulletSpeed;
+                targetPos += playerVel * timeToHit;
+
+                // 봇 타입별 정확도
+                float accuracy = botType == BotType.Sniper ? 0.95f :
+                               botType == BotType.Aggressive ? 0.8f : 0.6f;
+                Vector2 error = Random.insideUnitCircle * (1f - accuracy);
+                targetPos += error;
+            }
+        }
+
+        return (targetPos - (Vector2)transform.position).normalized;
+    }
+
+    protected override void HandleActions()
+    {
+        if (!player) return;
+
+        UpdateHuntingAI();
+
+        if (currentState == BotState.Attack || currentState == BotState.Ambush)
+        {
+            float distToPlayer = Vector2.Distance(transform.position, player.position);
+
+            if (distToPlayer <= attackRange)
+            {
+                Fire(GetPredictiveAimDirection());
+            }
+
+            if (botType == BotType.Rusher && distToPlayer < 4f)
+            {
+                Dash((player.position - transform.position).normalized);
+            }
+        }
+    }
+
+    void UpdateHuntingAI()
+    {
+        stateTimer += Time.deltaTime;
+        float distToPlayer = Vector2.Distance(transform.position, player.position);
+
+        switch (currentState)
+        {
+            case BotState.Hunt:
+                if (distToPlayer <= attackRange)
+                    ChangeState(BotState.Attack);
+                break;
+
+            case BotState.Ambush:
+                if (stateTimer > ambushDuration || distToPlayer <= attackRange)
+                    ChangeState(BotState.Attack);
+                break;
+
+            case BotState.Attack:
+                if (currentHealth < maxHealth * 0.25f)
+                    ChangeState(BotState.Flee);
+                else if (distToPlayer > attackRange * 2f)
+                    ChangeState(BotState.Hunt);
+                break;
+
+            case BotState.Flee:
+                if (stateTimer > 4f || currentHealth > maxHealth * 0.6f)
+                    ChangeState(BotState.Hunt);
+                break;
+        }
+    }
+
+    void ChangeState(BotState newState)
+    {
+        currentState = newState;
+        stateTimer = 0f;
+    }
+
+    void MoveTowards(Vector2 targetPos)
+    {
+        Vector2 direction = (targetPos - (Vector2)transform.position).normalized;
+        Move(direction);
+    }
+
+    void MoveAwayFrom(Vector2 dangerPos)
+    {
+        Vector2 direction = ((Vector2)transform.position - dangerPos).normalized;
+        Move(direction);
     }
 
     void SetBotStats()
@@ -40,208 +207,24 @@ public class BotController : BaseCharacter
             case BotType.Aggressive:
                 moveSpeed *= 1.2f;
                 fireRate *= 0.7f;
-                detectionRange *= 1.3f;
-                bulletSpeed *= 1.1f;
-                predictionAccuracy = 0.9f;
+                attackRange *= 1.2f;
                 botColor = Color.red;
                 break;
             case BotType.Sniper:
-                attackRange *= 1.5f;
-                fireRate *= 1.5f;
-                moveSpeed *= 0.8f;
-                bulletSpeed *= 1.3f;
-                predictionAccuracy = 0.95f; // 스나이퍼는 예측이 정확
+                attackRange *= 2f;
+                fireRate *= 1.8f;
+                moveSpeed *= 0.7f;
+                ambushDistance *= 1.5f;
                 botColor = Color.green;
                 break;
             case BotType.Rusher:
                 moveSpeed *= 1.5f;
                 dashCooldown *= 0.5f;
                 maxHealth *= 0.8f;
-                bulletSpeed *= 0.9f;
-                predictionAccuracy = 0.6f; // 러셔는 부정확
                 botColor = Color.blue;
                 break;
         }
         currentHealth = maxHealth;
-    }
-
-    protected override void HandleMovement()
-    {
-        switch (currentState)
-        {
-            case BotState.Wander:
-                MoveTowards(wanderTarget);
-                if (Vector2.Distance(transform.position, wanderTarget) < 1f)
-                    SetRandomWanderTarget();
-                break;
-
-            case BotState.Chase:
-                if (target) MoveTowards(target.position);
-                break;
-
-            case BotState.Flee:
-                if (target) MoveAwayFrom(target.position);
-                break;
-        }
-    }
-
-    protected override void HandleAiming()
-    {
-        if (target && currentState == BotState.Attack)
-        {
-            Vector2 aimDirection = GetAimDirection();
-            float angle = Mathf.Atan2(aimDirection.y, aimDirection.x) * Mathf.Rad2Deg - 90f;
-            transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
-        }
-    }
-
-    Vector2 GetAimDirection()
-    {
-        if (!target) return Vector2.zero;
-
-        Vector2 targetPos = target.position;
-
-        if (usePredictiveAiming && botType != BotType.Basic)
-        {
-            // 타겟의 속도 계산
-            UpdateTargetVelocity();
-
-            // 예측 사격 계산
-            Vector2 predictedPos = CalculatePredictedPosition(targetPos, targetVelocity);
-
-            // 정확도에 따라 오차 추가
-            Vector2 aimOffset = Random.insideUnitCircle * (1f - predictionAccuracy) * 2f;
-            targetPos = predictedPos + aimOffset;
-        }
-
-        return (targetPos - (Vector2)transform.position).normalized;
-    }
-
-    void UpdateTargetVelocity()
-    {
-        if (target)
-        {
-            Vector2 currentPos = target.position;
-            targetVelocity = (currentPos - lastTargetPosition) / Time.deltaTime;
-            lastTargetPosition = currentPos;
-        }
-    }
-
-    Vector2 CalculatePredictedPosition(Vector2 currentPos, Vector2 velocity)
-    {
-        // 총알이 타겟에 도달하는 시간 계산
-        float distanceToTarget = Vector2.Distance(transform.position, currentPos);
-        float timeToHit = distanceToTarget / bulletSpeed;
-
-        // 예측 위치 = 현재 위치 + (속도 * 시간)
-        return currentPos + velocity * timeToHit;
-    }
-
-    protected override void HandleActions()
-    {
-        UpdateAI();
-
-        if (currentState == BotState.Attack && target)
-        {
-            Fire(GetAimDirection());
-
-            if (botType == BotType.Rusher && Vector2.Distance(transform.position, target.position) < 4f)
-            {
-                Dash((target.position - transform.position).normalized);
-            }
-        }
-    }
-
-    void UpdateAI()
-    {
-        if (Time.time - lastTargetSearch > 0.5f)
-        {
-            FindTarget();
-            lastTargetSearch = Time.time;
-        }
-
-        stateTimer += Time.deltaTime;
-
-        var distanceToTarget = target ? Vector2.Distance(transform.position, target.position) : float.MaxValue;
-
-        switch (currentState)
-        {
-            case BotState.Wander:
-                if (target && distanceToTarget < detectionRange)
-                    ChangeState(BotState.Chase);
-                break;
-
-            case BotState.Chase:
-                if (!target || distanceToTarget > detectionRange * 1.5f)
-                    ChangeState(BotState.Wander);
-                else if (distanceToTarget < attackRange)
-                    ChangeState(BotState.Attack);
-                break;
-
-            case BotState.Attack:
-                if (!target || distanceToTarget > attackRange * 1.2f)
-                    ChangeState(BotState.Chase);
-                else if (currentHealth < maxHealth * 0.3f)
-                    ChangeState(BotState.Flee);
-                break;
-
-            case BotState.Flee:
-                if (currentHealth > maxHealth * 0.6f || stateTimer > 5f)
-                    ChangeState(BotState.Wander);
-                break;
-        }
-    }
-
-    void FindTarget()
-    {
-        var allCharacters = FindObjectsByType<BaseCharacter>(FindObjectsSortMode.None);
-        BaseCharacter closestTarget = null;
-        float closestDistance = detectionRange;
-
-        foreach (var character in allCharacters)
-        {
-            if (character == this || character.IsDead) continue;
-
-            float distance = Vector2.Distance(transform.position, character.transform.position);
-            if (distance < closestDistance)
-            {
-                closestTarget = character;
-                closestDistance = distance;
-            }
-        }
-
-        target = closestTarget?.transform;
-        if (target)
-        {
-            lastTargetPosition = target.position;
-        }
-    }
-
-    void ChangeState(BotState newState)
-    {
-        currentState = newState;
-        stateTimer = 0f;
-
-        if (newState == BotState.Wander)
-            SetRandomWanderTarget();
-    }
-
-    void MoveTowards(Vector2 targetPos)
-    {
-        var direction = (targetPos - (Vector2)transform.position).normalized;
-        Move(direction);
-    }
-
-    void MoveAwayFrom(Vector2 dangerPos)
-    {
-        var direction = ((Vector2)transform.position - dangerPos).normalized;
-        Move(direction);
-    }
-
-    void SetRandomWanderTarget()
-    {
-        var randomDirection = Random.insideUnitCircle.normalized;
-        wanderTarget = (Vector2)transform.position + randomDirection * Random.Range(3f, 8f);
     }
 }
 
