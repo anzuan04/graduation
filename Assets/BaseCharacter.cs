@@ -18,8 +18,8 @@ public abstract class BaseCharacter : MonoBehaviour
     public GameObject trailSmokePrefab;
     public Transform firePoint;
     public float fireRate = 0.5f;
-    public float bulletSpeed = 20f;  // 총알 속도
-    public float bulletRange = 15f;  // 총알 사거리
+    public float bulletSpeed = 20f;
+    public float bulletRange = 15f;
     public float damage = 25f;
 
     [Header("Layers")]
@@ -32,9 +32,9 @@ public abstract class BaseCharacter : MonoBehaviour
     protected Rigidbody2D rb;
     protected Camera playerCamera;
 
-    // 가상 총알 관리
     private List<VirtualBullet> activeBullets = new List<VirtualBullet>();
     private List<TrailSmoke> activeTrails = new List<TrailSmoke>();
+    private MuzzleFlash muzzleFlash;
 
     public event Action OnDeath;
     public bool IsDead => currentHealth <= 0;
@@ -44,6 +44,13 @@ public abstract class BaseCharacter : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         currentHealth = maxHealth;
         playerCamera = Camera.main;
+
+        if (firePoint)
+        {
+            muzzleFlash = firePoint.GetComponent<MuzzleFlash>();
+            if (!muzzleFlash)
+                muzzleFlash = firePoint.gameObject.AddComponent<MuzzleFlash>();
+        }
     }
 
     protected virtual void Update()
@@ -63,17 +70,14 @@ public abstract class BaseCharacter : MonoBehaviour
             var bullet = activeBullets[i];
             Vector2 previousPos = bullet.currentPosition;
 
-            // 총알 위치 업데이트
             bool stillActive = bullet.UpdatePosition(Time.deltaTime);
 
             if (!stillActive)
             {
-                // 사거리 초과
                 activeBullets.RemoveAt(i);
                 continue;
             }
 
-            // 이전 위치에서 현재 위치까지 레이캐스트
             Vector2 movement = bullet.currentPosition - previousPos;
             float moveDistance = movement.magnitude;
 
@@ -83,10 +87,8 @@ public abstract class BaseCharacter : MonoBehaviour
 
                 if (hit.collider != null)
                 {
-                    // 충돌 처리
                     if (IsObstacle(hit.collider))
                     {
-                        // 장애물에 충돌 - 총알 제거
                         CreateTrailToPoint(bullet.startPosition, hit.point);
                         activeBullets.RemoveAt(i);
                     }
@@ -95,7 +97,6 @@ public abstract class BaseCharacter : MonoBehaviour
                         var character = hit.collider.GetComponent<BaseCharacter>();
                         if (character && character != bullet.shooter)
                         {
-                            // 타겟에 충돌 - 피해 적용
                             character.TakeDamage(bullet.damage);
                             CreateTrailToPoint(bullet.startPosition, hit.point);
                             activeBullets.RemoveAt(i);
@@ -104,7 +105,6 @@ public abstract class BaseCharacter : MonoBehaviour
                 }
                 else
                 {
-                    // 충돌 없음 - 궤적 연기 업데이트
                     UpdateTrailSmoke(bullet, previousPos);
                 }
             }
@@ -113,7 +113,6 @@ public abstract class BaseCharacter : MonoBehaviour
 
     void UpdateTrailSmoke(VirtualBullet bullet, Vector2 previousPos)
     {
-        // 총알이 지나간 경로에 연기 효과 생성
         if (trailSmokePrefab && Vector2.Distance(previousPos, bullet.currentPosition) > 0.5f)
         {
             var trail = Instantiate(trailSmokePrefab, previousPos, Quaternion.identity);
@@ -121,7 +120,6 @@ public abstract class BaseCharacter : MonoBehaviour
             trailComponent.CreateTrail(previousPos, bullet.currentPosition);
             activeTrails.Add(trailComponent);
 
-            // 오래된 궤적 정리
             if (activeTrails.Count > 20)
             {
                 if (activeTrails[0] != null)
@@ -164,7 +162,9 @@ public abstract class BaseCharacter : MonoBehaviour
     {
         if (Time.time - lastFireTime < fireRate) return;
 
-        // 가상 총알 생성
+        if (muzzleFlash)
+            muzzleFlash.Flash(direction);
+
         var bullet = new VirtualBullet(
             firePoint.position,
             direction,
@@ -199,7 +199,6 @@ public abstract class BaseCharacter : MonoBehaviour
 
     protected virtual void Die()
     {
-        // 죽을 때 발사한 총알들 정리
         activeBullets.Clear();
         OnDeath?.Invoke();
         gameObject.SetActive(false);
@@ -214,7 +213,6 @@ public abstract class BaseCharacter : MonoBehaviour
         return playerCamera.ScreenToWorldPoint(mousePos);
     }
 
-    // 디버그용 - 가상 총알 위치 표시
     void OnDrawGizmos()
     {
         if (activeBullets == null) return;
