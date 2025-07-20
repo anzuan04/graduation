@@ -6,10 +6,14 @@ using UnityEngine.InputSystem;
 
 public class PlayerController : BaseCharacter
 {
+
+    [SerializeField] private FieldOfView fov;
+
     [Header("Player UI")]
     public GameObject crosshair;
     public UnityEngine.UI.Slider healthBar;
     public UnityEngine.UI.Button dashButton;
+
 
     protected override void Awake()
     {
@@ -22,6 +26,9 @@ public class PlayerController : BaseCharacter
         base.Update();
         UpdateUI();
         UpdateCrosshair();
+        fov.setTransform(transform.position);
+        Shader.SetGlobalVector("_PlayerPos", new Vector4(transform.position.x, transform.position.y, 0, 0));
+        Shader.SetGlobalVector("_PlayerDir", new Vector4(transform.up.x, transform.up.y, 0, 0));
     }
 
     protected override void HandleMovement()
@@ -57,7 +64,7 @@ public class PlayerController : BaseCharacter
         if (mouse == null || keyboard == null) return;
 
         // 좌클릭으로 발사
-        if (mouse.leftButton.isPressed)
+        if (mouse.leftButton.wasPressedThisFrame)
         {
             Fire(GetAimDirection());
         }

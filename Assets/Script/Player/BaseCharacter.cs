@@ -16,6 +16,7 @@ public abstract class BaseCharacter : MonoBehaviour
 
     [Header("Combat")]
     public GameObject trailSmokePrefab;
+    public GameObject bullet;
     public Transform firePoint;
     public float fireRate = 0.5f;
     public float bulletSpeed = 20f;
@@ -71,7 +72,6 @@ public abstract class BaseCharacter : MonoBehaviour
             Vector2 previousPos = bullet.currentPosition;
 
             bool stillActive = bullet.UpdatePosition(Time.deltaTime);
-
             if (!stillActive)
             {
                 activeBullets.RemoveAt(i);
@@ -84,7 +84,6 @@ public abstract class BaseCharacter : MonoBehaviour
             if (moveDistance > 0.001f)
             {
                 RaycastHit2D hit = Physics2D.Raycast(previousPos, movement.normalized, moveDistance, obstacleLayer | targetLayer);
-
                 if (hit.collider != null)
                 {
                     if (IsObstacle(hit.collider))
@@ -105,16 +104,18 @@ public abstract class BaseCharacter : MonoBehaviour
                 }
                 else
                 {
-                    UpdateTrailSmoke(bullet, previousPos);
+                    UpdateTrailSmoke(bullet, previousPos); 
                 }
             }
         }
     }
 
     void UpdateTrailSmoke(VirtualBullet bullet, Vector2 previousPos)
-    {
-        if (trailSmokePrefab && Vector2.Distance(previousPos, bullet.currentPosition) > 0.5f)
+    {   
+        
+        if (trailSmokePrefab)
         {
+            
             var trail = Instantiate(trailSmokePrefab, previousPos, Quaternion.identity);
             var trailComponent = trail.GetComponent<TrailSmoke>();
             trailComponent.CreateTrail(previousPos, bullet.currentPosition);
@@ -160,7 +161,7 @@ public abstract class BaseCharacter : MonoBehaviour
 
     protected void Fire(Vector2 direction)
     {
-        if (Time.time - lastFireTime < fireRate) return;
+        /*if (Time.time - lastFireTime < fireRate) return;
 
         if (muzzleFlash)
             muzzleFlash.Flash(direction);
@@ -175,7 +176,15 @@ public abstract class BaseCharacter : MonoBehaviour
         );
 
         activeBullets.Add(bullet);
-        lastFireTime = Time.time;
+        lastFireTime = Time.time;*/
+        var bulletObj = BulletPool.instance.Pool.Get();
+        if (bulletObj != null)
+        {
+            if (muzzleFlash)
+                muzzleFlash.Flash(direction);
+            BulletSys bs = bulletObj.GetComponent<BulletSys>();
+            bs.Fire(transform.position,direction);
+        }
     }
 
     bool IsObstacle(Collider2D collider)
@@ -212,15 +221,5 @@ public abstract class BaseCharacter : MonoBehaviour
         var mousePos = mouse.position.ReadValue();
         return playerCamera.ScreenToWorldPoint(mousePos);
     }
-
-    void OnDrawGizmos()
-    {
-        if (activeBullets == null) return;
-
-        Gizmos.color = Color.yellow;
-        foreach (var bullet in activeBullets)
-        {
-            Gizmos.DrawWireSphere(bullet.currentPosition, 0.1f);
-        }
-    }
+    
 }

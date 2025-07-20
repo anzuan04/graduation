@@ -16,6 +16,10 @@ public class BotController : BaseCharacter
     public float ambushDistance = 12f; // 잠복 거리
     public float ambushDuration = 3f; // 잠복 시간
 
+    [Header("Team System")]
+    public bool isAlly = false;
+    public Color allyColor = Color.cyan;
+
     private Transform player;
     private Vector2 ambushPosition;
     private Vector2 wanderTarget;
@@ -45,6 +49,13 @@ public class BotController : BaseCharacter
     protected override void HandleMovement()
     {
         if (!player) return;
+
+        // 아군이면 적 봇을 찾아서 공격
+        if (isAlly)
+        {
+            HandleAllyMovement();
+            return;
+        }
 
         switch (currentState)
         {
@@ -77,6 +88,79 @@ public class BotController : BaseCharacter
         }
     }
 
+    void HandleAllyMovement()
+    {
+        // 가장 가까운 적 봇 찾기
+        var enemyBot = FindNearestEnemyBot();
+        if (enemyBot)
+        {
+            float distance = Vector2.Distance(transform.position, enemyBot.position);
+            if (distance > attackRange)
+            {
+                MoveTowards(enemyBot.position);
+            }
+        }
+        else
+        {
+            // 적이 없으면 플레이어 근처에서 대기
+            float distToPlayer = Vector2.Distance(transform.position, player.position);
+            if (distToPlayer > 5f)
+            {
+                MoveTowards(player.position);
+            }
+        }
+    }
+
+    Transform FindNearestEnemyBot()
+    {
+        var allBots = FindObjectsByType<BotController>(FindObjectsSortMode.None);
+        Transform nearestEnemy = null;
+        float nearestDistance = float.MaxValue;
+
+        foreach (var bot in allBots)
+        {
+            if (bot != this && !bot.isAlly)
+            {
+                float distance = Vector2.Distance(transform.position, bot.transform.position);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestEnemy = bot.transform;
+                }
+            }
+        }
+
+        return nearestEnemy;
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        // 플레이어가 봇에 닿으면 아군으로 전환
+        if (!isAlly && other.GetComponent<PlayerController>())
+        {
+            ConvertToAlly();
+        }
+    }
+
+    void ConvertToAlly()
+    {
+        isAlly = true;
+        currentState = BotState.Hunt;
+        stateTimer = 0f;
+
+        // 플레이어 색상으로 변경
+        var sr = GetComponent<SpriteRenderer>();
+        if (sr != null && player != null)
+        {
+            var playerSr = player.GetComponent<SpriteRenderer>();
+            sr.color = playerSr ? playerSr.color : allyColor;
+        }
+
+        // 능력치 조정
+        moveSpeed *= 1.1f;
+        fireRate *= 0.9f;
+    }
+
     bool ShouldAmbush()
     {
         if (botType == BotType.Sniper || botType == BotType.Aggressive)
@@ -96,9 +180,23 @@ public class BotController : BaseCharacter
 
     protected override void HandleAiming()
     {
-        if (player && (currentState == BotState.Attack || currentState == BotState.Ambush))
+        Vector2 aimDirection = Vector2.zero;
+
+        if (isAlly)
         {
-            Vector2 aimDirection = GetPredictiveAimDirection();
+            var enemyBot = FindNearestEnemyBot();
+            if (enemyBot)
+            {
+                aimDirection = (enemyBot.position - transform.position).normalized;
+            }
+        }
+        else if (player && (currentState == BotState.Attack || currentState == BotState.Ambush))
+        {
+            aimDirection = GetPredictiveAimDirection();
+        }
+
+        if (aimDirection != Vector2.zero)
+        {
             float angle = Mathf.Atan2(aimDirection.y, aimDirection.x) * Mathf.Rad2Deg - 90f;
             transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
@@ -133,6 +231,12 @@ public class BotController : BaseCharacter
     {
         if (!player) return;
 
+        if (isAlly)
+        {
+            HandleAllyActions();
+            return;
+        }
+
         UpdateHuntingAI();
 
         if (currentState == BotState.Attack || currentState == BotState.Ambush)
@@ -147,6 +251,20 @@ public class BotController : BaseCharacter
             if (botType == BotType.Rusher && distToPlayer < 4f)
             {
                 Dash((player.position - transform.position).normalized);
+            }
+        }
+    }
+
+    void HandleAllyActions()
+    {
+        var enemyBot = FindNearestEnemyBot();
+        if (enemyBot)
+        {
+            float distance = Vector2.Distance(transform.position, enemyBot.position);
+            if (distance <= attackRange)
+            {
+                Vector2 aimDirection = (enemyBot.position - transform.position).normalized;
+                Fire(aimDirection);
             }
         }
     }
@@ -209,6 +327,7 @@ public class BotController : BaseCharacter
                 fireRate *= 0.7f;
                 attackRange *= 1.2f;
                 botColor = Color.red;
+                allyColor = Color.magenta;
                 break;
             case BotType.Sniper:
                 attackRange *= 2f;
@@ -216,12 +335,18 @@ public class BotController : BaseCharacter
                 moveSpeed *= 0.7f;
                 ambushDistance *= 1.5f;
                 botColor = Color.green;
+                allyColor = Color.cyan;
                 break;
             case BotType.Rusher:
                 moveSpeed *= 1.5f;
                 dashCooldown *= 0.5f;
                 maxHealth *= 0.8f;
                 botColor = Color.blue;
+                allyColor = Color.yellow;
+                break;
+            default:
+                botColor = Color.red;
+                allyColor = Color.cyan;
                 break;
         }
         currentHealth = maxHealth;
