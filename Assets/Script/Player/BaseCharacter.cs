@@ -58,7 +58,6 @@ public abstract class BaseCharacter : MonoBehaviour
     {
         if (IsDead) return;
 
-        UpdateVirtualBullets();
         HandleMovement();
         HandleAiming();
         HandleActions();
@@ -183,7 +182,7 @@ public abstract class BaseCharacter : MonoBehaviour
             if (muzzleFlash)
                 muzzleFlash.Flash(direction);
             BulletSys bs = bulletObj.GetComponent<BulletSys>();
-            bs.Fire(transform.position,direction);
+            bs.Fire(firePoint.position,direction);
         }
     }
 

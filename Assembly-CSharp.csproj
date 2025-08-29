@@ -68,20 +68,26 @@
     <Compile Include="Assets\Script\Player\PlayerController.cs" />
     <Compile Include="Assets\Script\Field of view\FieldOfView.cs" />
     <Compile Include="Assets\Script\Dominate Sys\Dominate.cs" />
+    <Compile Include="Assets\Script\Enemy\EnemyAi.cs" />
     <Compile Include="Assets\Script\VirtualBullet.cs" />
     <Compile Include="Assets\Script\TrailSmoke.cs" />
+    <Compile Include="Assets\Script\Manager\PlaceManager.cs" />
     <Compile Include="Assets\Script\BotController.cs" />
+    <Compile Include="Assets\Script\Dominate Sys\FillShaderEffect.cs" />
     <Compile Include="Assets\Script\Bullet\BulletSys.cs" />
     <Compile Include="Assets\Script\Bullet\BulletPool.cs" />
     <Compile Include="Assets\Script\GameManager.cs" />
+    <Compile Include="Assets\Script\Enemy\EnemyFOV.cs" />
     <Compile Include="Assets\Script\MuzzleFlash.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\TextMesh Pro\Shaders\TMPro.cginc" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Mobile Overlay.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Mobile-2-Pass.shader" />
+    <None Include="Assets\Shader\background.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_Bitmap.shader" />
     <None Include="Assets\Shader\Enemy_shadow.shader" />
+    <None Include="Assets\Shader\FillEffect.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMPro_Mobile.cginc" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF SSD.shader" />
     <None Include="Assets\TextMesh Pro\Shaders\TMP_SDF-Surface-Mobile.shader" />
